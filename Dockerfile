@@ -6,7 +6,8 @@ ARG SUPERCRONIC_VERSION=0.2.26
 RUN apk add --no-cache bash curl ca-certificates coreutils docker-cli tzdata zstd rclone gzip \
     && update-ca-certificates \
     && curl -fsSL -o /tmp/gum.tar.gz https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_Linux_x86_64.tar.gz \
-    && tar -C /usr/local/bin -xzf /tmp/gum.tar.gz gum \
+    && tar -xzf /tmp/gum.tar.gz -C /tmp \
+    && mv /tmp/gum_${GUM_VERSION}_Linux_x86_64/gum /usr/local/bin/gum \
     && chmod +x /usr/local/bin/gum \
     && curl -fsSL -o /usr/local/bin/supercronic https://github.com/aptible/supercronic/releases/download/v${SUPERCRONIC_VERSION}/supercronic-linux-amd64 \
     && chmod +x /usr/local/bin/supercronic \
