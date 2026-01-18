@@ -15,7 +15,7 @@ services:
     image: ghcr.io/xinxinsuried/pgcos:latest
     build: .
     command: ["scheduler"]
-    restart: unless-stopped
+    restart: on-failure:5
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config:/config

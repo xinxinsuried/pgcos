@@ -24,21 +24,25 @@ load_config() {
   fi
 }
 
+escape_value() {
+  printf "%s" "$1" | sed "s/'/'\"'\"'/g"
+}
+
 save_config() {
   ensure_dirs
   cat > "$CONFIG_FILE" <<EOF
-PG_INSTANCE_ID=${PG_INSTANCE_ID}
-PG_CONTAINER=${PG_CONTAINER}
-PG_USER=${PG_USER}
-PG_PASSWORD=${PG_PASSWORD}
-COS_BUCKET=${COS_BUCKET}
-COS_ENDPOINT=${COS_ENDPOINT}
-COS_SECRET_ID=${COS_SECRET_ID}
-COS_SECRET_KEY=${COS_SECRET_KEY}
-COS_PREFIX=${COS_PREFIX}
-SCHEDULE_CRON=${SCHEDULE_CRON}
-RETENTION_DAYS=${RETENTION_DAYS}
-RETENTION_COUNT=${RETENTION_COUNT}
+PG_INSTANCE_ID='$(escape_value "${PG_INSTANCE_ID}")'
+PG_CONTAINER='$(escape_value "${PG_CONTAINER}")'
+PG_USER='$(escape_value "${PG_USER}")'
+PG_PASSWORD='$(escape_value "${PG_PASSWORD}")'
+COS_BUCKET='$(escape_value "${COS_BUCKET}")'
+COS_ENDPOINT='$(escape_value "${COS_ENDPOINT}")'
+COS_SECRET_ID='$(escape_value "${COS_SECRET_ID}")'
+COS_SECRET_KEY='$(escape_value "${COS_SECRET_KEY}")'
+COS_PREFIX='$(escape_value "${COS_PREFIX}")'
+SCHEDULE_CRON='$(escape_value "${SCHEDULE_CRON}")'
+RETENTION_DAYS='$(escape_value "${RETENTION_DAYS}")'
+RETENTION_COUNT='$(escape_value "${RETENTION_COUNT}")'
 EOF
   chmod 600 "$CONFIG_FILE"
 
@@ -264,7 +268,8 @@ configure() {
     PG_CONTAINER="$(gum input --placeholder "PostgreSQL container name or ID")"
   fi
 
-  PG_USER="$(gum input --value "postgres" --placeholder "PostgreSQL superuser")"
+  PG_USER="$(gum input --placeholder "PostgreSQL superuser (default: postgres)")"
+  [[ -z "$PG_USER" ]] && PG_USER="postgres"
   PG_PASSWORD="$(gum input --password --placeholder "PostgreSQL password (optional)")"
 
   COS_BUCKET="$(gum input --placeholder "COS bucket (e.g. mybucket-125xxxxxx)")"
@@ -274,8 +279,10 @@ configure() {
 
   COS_PREFIX="pg-backup"
 
-  SCHEDULE_CRON="$(gum input --value "0 3 * * *" --placeholder "Backup schedule (cron)")"
-  RETENTION_DAYS="$(gum input --value "14" --placeholder "Retention days (empty to disable)")"
+  SCHEDULE_CRON="$(gum input --placeholder "Backup schedule (cron, default: 0 3 * * *)")"
+  [[ -z "$SCHEDULE_CRON" ]] && SCHEDULE_CRON="0 3 * * *"
+  RETENTION_DAYS="$(gum input --placeholder "Retention days (default: 14, empty to disable)")"
+  [[ -z "$RETENTION_DAYS" ]] && RETENTION_DAYS="14"
   RETENTION_COUNT="$(gum input --placeholder "Retention count (optional)")"
 
   save_config
@@ -329,7 +336,10 @@ panel_menu() {
 }
 
 scheduler() {
-  require_config
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    log "Config not found, scheduler will exit without restart"
+    exit 0
+  fi
   load_config
   ensure_dirs
   require_cmd supercronic
