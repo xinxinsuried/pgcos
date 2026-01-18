@@ -27,7 +27,7 @@ docker compose up -d
 docker compose run --rm panel
 ```
 3. 之后由 scheduler 自动按配置定时备份。
-4. 首次会要求填写 `instance_id`（用于多实例区分）。
+4. 首次会要求填写 `instance_id`（用于多实例区分，必须手动填写）。
 
 > 配置保存在 `./config/config.env`，COS 密钥仅在宿主机 `./config/` 中保存。
 > 修改配置后请执行：`docker compose restart scheduler`
@@ -43,9 +43,9 @@ docker compose run --rm panel
 
 ## 备份目录结构
 ```
-s3://{bucket}/{prefix}/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/globals.sql.zst
-s3://{bucket}/{prefix}/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/{dbname}.dump.zst
-s3://{bucket}/{prefix}/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
+s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/globals.sql.zst
+s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/{dbname}.dump.zst
+s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
 ```
 
 ## 恢复流程（自动）
@@ -54,7 +54,7 @@ s3://{bucket}/{prefix}/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
 3. `pg_restore --clean --if-exists`
 
 ## 多实例支持
-- 初始化时会要求填写 `instance_id`（建议使用主机名或业务标识），备份将写入对应实例目录。
+- 初始化时会要求填写 `instance_id`（必须手动输入），备份将写入对应实例目录。
 - 恢复/列表/清理时会读取实例列表供选择。
 
 ## 常见错误

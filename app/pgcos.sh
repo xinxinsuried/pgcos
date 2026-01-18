@@ -248,9 +248,10 @@ test_connection() {
 configure() {
   ensure_dirs
   require_cmd gum
-  local default_instance
-  default_instance="$(hostname)"
-  PG_INSTANCE_ID="$(gum input --value "$default_instance" --placeholder "PG instance id (unique)")"
+  while true; do
+    PG_INSTANCE_ID="$(gum input --placeholder "PG instance id (unique)")"
+    [[ -n "$PG_INSTANCE_ID" ]] && break
+  done
 
   local containers
   containers="$(docker ps --format '{{.Names}}' | tr '\n' ' ')"
@@ -271,9 +272,7 @@ configure() {
   COS_SECRET_ID="$(gum input --placeholder "SecretId")"
   COS_SECRET_KEY="$(gum input --password --placeholder "SecretKey")"
 
-  local host
-  host="$(hostname)"
-  COS_PREFIX="$(gum input --value "pg-backups/${host}" --placeholder "Backup prefix")"
+  COS_PREFIX="pg-backup"
 
   SCHEDULE_CRON="$(gum input --value "0 3 * * *" --placeholder "Backup schedule (cron)")"
   RETENTION_DAYS="$(gum input --value "14" --placeholder "Retention days (empty to disable)")"

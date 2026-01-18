@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   panel:
-    image: pgcos:latest
+    image: ghcr.io/xinxinsuried/pgcos:latest
     build: .
     command: ["panel"]
     volumes:
@@ -12,7 +12,7 @@ services:
       - TZ=Asia/Shanghai
 
   scheduler:
-    image: pgcos:latest
+    image: ghcr.io/xinxinsuried/pgcos:latest
     build: .
     command: ["scheduler"]
     restart: unless-stopped
