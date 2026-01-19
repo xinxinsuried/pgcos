@@ -293,13 +293,10 @@ test_restore() {
   [[ -n "$backup_id" ]] || fail "No backup found for instance ${instance_id}"
 
   log "Restoring backup ${backup_id} into ${name}"
-  local original_container
-  original_container="$PG_CONTAINER"
-  PG_CONTAINER="$name"
-  PG_USER="postgres"
-  PG_PASSWORD="$test_password"
-  restore_from "$instance_id" "$backup_id"
-  PG_CONTAINER="$original_container"
+  PGCOS_OVERRIDE_PG_CONTAINER="$name" \
+    PGCOS_OVERRIDE_PG_USER="postgres" \
+    PGCOS_OVERRIDE_PG_PASSWORD="$test_password" \
+    restore_from "$instance_id" "$backup_id"
 
   log "Test restore complete. Container still running: ${name}"
   log "Cleanup when done: docker rm -f ${name}"
@@ -346,13 +343,10 @@ test_flow() {
   [[ -n "$backup_id" ]] || fail "No backup found for instance ${instance_id}"
 
   log "Restoring backup ${backup_id} into ${name}"
-  local original_container
-  original_container="$PG_CONTAINER"
-  PG_CONTAINER="$name"
-  PG_USER="postgres"
-  PG_PASSWORD="$test_password"
-  restore_from "$instance_id" "$backup_id"
-  PG_CONTAINER="$original_container"
+  PGCOS_OVERRIDE_PG_CONTAINER="$name" \
+    PGCOS_OVERRIDE_PG_USER="postgres" \
+    PGCOS_OVERRIDE_PG_PASSWORD="$test_password" \
+    restore_from "$instance_id" "$backup_id"
 
   log "Verifying restore"
   local meta_db_count
@@ -410,6 +404,15 @@ restore_from() {
   [[ -n "$backup_id" ]] || fail "Backup id required"
   require_config
   load_config
+  if [[ -n "${PGCOS_OVERRIDE_PG_CONTAINER:-}" ]]; then
+    PG_CONTAINER="$PGCOS_OVERRIDE_PG_CONTAINER"
+  fi
+  if [[ -n "${PGCOS_OVERRIDE_PG_USER:-}" ]]; then
+    PG_USER="$PGCOS_OVERRIDE_PG_USER"
+  fi
+  if [[ -n "${PGCOS_OVERRIDE_PG_PASSWORD:-}" ]]; then
+    PG_PASSWORD="$PGCOS_OVERRIDE_PG_PASSWORD"
+  fi
   ensure_dirs
   check_pg
   check_cos
