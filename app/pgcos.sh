@@ -17,6 +17,43 @@ gum_input_password() {
   gum input --password --prompt "> " "$@"
 }
 
+list_backups_pretty() {
+  local instance_id="$1"
+  local backups
+  backups="$(list_backups_for_instance "$instance_id" | sort)"
+  [[ -z "$backups" ]] && { log "No backups"; return 0; }
+
+  local rows=()
+  while read -r b; do
+    [[ -z "$b" ]] && continue
+    local ts
+    ts="${b/_/ }"
+    local epoch
+    epoch="$(date -d "$ts" +%s 2>/dev/null || echo "")"
+    local age="unknown"
+    if [[ -n "$epoch" ]]; then
+      local now
+      now="$(date +%s)"
+      local diff=$((now - epoch))
+      local days=$((diff / 86400))
+      local hours=$(((diff % 86400) / 3600))
+      age="${days}d ${hours}h"
+    fi
+    rows+=("$b" "$ts" "$age")
+  done <<< "$backups"
+
+  if command -v gum >/dev/null 2>&1; then
+    gum table --columns "backup_id,datetime,age" --rows "${rows[@]}"
+  else
+    printf "%-22s %-19s %-10s\n" "backup_id" "datetime" "age"
+    local i=0
+    while [[ $i -lt ${#rows[@]} ]]; do
+      printf "%-22s %-19s %-10s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}"
+      i=$((i+3))
+    done
+  fi
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing command: $1"
 }
@@ -123,6 +160,15 @@ backup_now() {
   rclone copy "$dir" "cos:${COS_BUCKET}/${COS_PREFIX}/${PG_INSTANCE_ID}/${ts}" --config "$RCLONE_CONFIG"
   rm -rf "$dir"
   log "Backup complete: ${ts}"
+}
+
+update_self() {
+  local image
+  image="${PGCOS_IMAGE:-${IMAGE_NAME:-pgcos:latest}}"
+  require_cmd docker
+  log "Pulling image ${image}"
+  docker pull "$image"
+  log "Update complete. Restart services to apply the new image."
 }
 
 list_instances() {
@@ -310,6 +356,7 @@ panel_menu() {
       "prune" \
       "show-config" \
       "test-connection" \
+      "update-self" \
       "help" \
       "exit")"
 
@@ -337,7 +384,17 @@ panel_menu() {
       prune) prune_backups ;;
       show-config) show_config ;;
       test-connection) test_connection ;;
-      help) echo "Commands: configure | backup-now | list | restore latest|select | prune | show-config | test-connection" ;;
+      update-self) update_self ;;
+      help) echo "
+configure    初始化/修改配置
+backup-now   立即备份
+list         列出备份（时间/年龄）
+restore      恢复（latest/select）
+prune        按保留策略清理旧备份
+show-config  查看当前配置
+test-connection  测试 PG/COS 连接
+update-self  拉取最新镜像
+" ;;
       exit) break ;;
     esac
   done
@@ -377,7 +434,7 @@ main() {
       local instance_id
       instance_id="${PG_INSTANCE_ID}"
       [[ -n "$instance_id" ]] || instance_id="$(select_instance)"
-      list_backups_for_instance "$instance_id"
+      list_backups_pretty "$instance_id"
       ;;
     restore)
       local instance_id
@@ -396,9 +453,10 @@ main() {
     prune) prune_backups ;;
     show-config) show_config ;;
     test-connection) test_connection ;;
+    update-self) update_self ;;
     scheduler) scheduler ;;
     *)
-      echo "Usage: $0 {panel|configure|backup-now|list|restore [latest|id]|prune|show-config|test-connection|scheduler}"
+      echo "Usage: $0 {panel|configure|backup-now|list|restore [latest|id]|prune|show-config|test-connection|update-self|scheduler}"
       exit 1
       ;;
   esac

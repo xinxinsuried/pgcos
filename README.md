@@ -40,6 +40,7 @@ docker compose run --rm panel
 - prune
 - show-config
 - test-connection
+- update-self（重新拉取镜像）
 
 ## 备份目录结构
 ```
@@ -56,6 +57,13 @@ s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
 ## 多实例支持
 - 初始化时会要求填写 `instance_id`（必须手动输入），备份将写入对应实例目录。
 - 恢复/列表/清理时会读取实例列表供选择。
+
+## 命令说明（中文）
+- backup-now：立即备份
+- list：列出备份（时间/年龄）
+- restore：恢复（latest/select）
+- prune：按保留策略清理旧备份
+- update-self：重新拉取当前镜像
 
 ## 常见错误
 - **pg_dump/psql 不存在**：该工具只通过 `docker exec` 调用 PG 容器里的工具，请确保容器内已有 `pg_dump/psql`。
