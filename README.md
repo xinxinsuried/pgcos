@@ -57,6 +57,8 @@ s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/metadata.json
 2. 创建数据库（若不存在）
 3. `pg_restore --clean --if-exists`
 
+说明：恢复时会把压缩文件解压后通过 stdin 传给 `pg_restore`，不依赖容器内文件路径。
+
 ## 多实例支持
 - 初始化时会要求填写 `instance_id`（必须手动输入），备份将写入对应实例目录。
 - 恢复/列表/清理时会读取实例列表供选择。
