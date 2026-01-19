@@ -171,7 +171,7 @@ pg_exec() {
 }
 
 list_pg_databases() {
-  pg_exec psql -U "$PG_USER" -t -A -c "select datname from pg_database where datistemplate=false" postgres
+  pg_exec psql -X -U "$PG_USER" -d postgres -A -t -c "select datname from pg_database where datistemplate=false order by 1" | sed 's/\r$//'
 }
 
 check_pg() {
@@ -207,16 +207,17 @@ backup_now() {
   local db
   local dbs=()
   local db_sizes=()
-  while read -r db; do
+  mapfile -t dbs < <(list_pg_databases)
+  log "Found ${#dbs[@]} databases"
+  for db in "${dbs[@]}"; do
     [[ -z "$db" ]] && continue
-    dbs+=("$db")
     log "Dumping $db"
     pg_exec pg_dump -U "$PG_USER" -Fc "$db" > "$dir/$db.dump"
     zstd -T0 -19 "$dir/$db.dump" -o "$dir/$db.dump.zst"
     rm -f "$dir/$db.dump"
     sha256sum "$dir/$db.dump.zst" > "$dir/$db.dump.zst.sha256"
     db_sizes+=("$(stat -c %s "$dir/$db.dump.zst" 2>/dev/null || echo 0)")
-  done < <(list_pg_databases)
+  done
 
   log "Writing metadata"
   local total_bytes
