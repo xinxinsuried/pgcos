@@ -50,6 +50,8 @@ s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
 s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/metadata.json
 ```
 
+`metadata.json` 字段：`instance_id`、`timestamp`、`db_count`、`databases`、`db_sizes`、`total_bytes`。
+
 ## 恢复流程（自动）
 1. 恢复 globals
 2. 创建数据库（若不存在）
@@ -62,6 +64,8 @@ s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/metadata.json
 ## 命令说明（中文）
 - backup-now：立即备份
 - list：列出备份（时间/年龄/大小）
+- list 列表列：`backup_id` / `datetime` / `age` / `size` / `dbs`
+- list 完成后可输入 `backup_id` 查看该备份的数据库与大小信息
 - restore：恢复（latest/select）
 - prune：按保留策略清理旧备份
 - update-self：重新拉取当前镜像

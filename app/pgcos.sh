@@ -40,7 +40,9 @@ list_backups_pretty() {
       age="${days}d ${hours}h"
     fi
     local size_bytes
+    local db_count
     size_bytes="$(rclone cat "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${b}/metadata.json" --config "$RCLONE_CONFIG" 2>/dev/null | awk -F: '/total_bytes/ {gsub(/[^0-9]/,"",$2); print $2}')"
+    db_count="$(rclone cat "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${b}/metadata.json" --config "$RCLONE_CONFIG" 2>/dev/null | awk -F: '/db_count/ {gsub(/[^0-9]/,"",$2); print $2}')"
     if [[ -z "$size_bytes" ]]; then
       size_bytes="$(rclone lsjson "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${b}" --config "$RCLONE_CONFIG" 2>/dev/null | awk -F: '/"Size"/ {sum+=$2} END {print sum+0}')"
     fi
@@ -48,19 +50,38 @@ list_backups_pretty() {
     if [[ -n "$size_bytes" && "$size_bytes" =~ ^[0-9]+$ ]]; then
       size_human="$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")"
     fi
-    rows+=("$b" "$ts" "$age" "$size_human")
+    rows+=("$b" "$ts" "$age" "$size_human" "${db_count:-?}")
   done <<< "$backups"
 
-  if command -v gum >/dev/null 2>&1; then
-    gum table --columns "backup_id,datetime,age,size" --rows "${rows[@]}"
-  else
-    printf "%-22s %-19s %-10s %-10s\n" "backup_id" "datetime" "age" "size"
-    local i=0
-    while [[ $i -lt ${#rows[@]} ]]; do
-      printf "%-22s %-19s %-10s %-10s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}" "${rows[$((i+3))]}"
-      i=$((i+4))
-    done
+  printf "%-22s %-19s %-10s %-10s %-8s\n" "backup_id" "datetime" "age" "size" "dbs"
+  printf "%-22s %-19s %-10s %-10s %-8s\n" "----------------------" "-------------------" "----------" "----------" "--------"
+  local i=0
+  while [[ $i -lt ${#rows[@]} ]]; do
+    printf "%-22s %-19s %-10s %-10s %-8s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}" "${rows[$((i+3))]}" "${rows[$((i+4))]}"
+    i=$((i+5))
+  done
+}
+
+show_backup_details() {
+  local instance_id="$1"
+  local backup_id="$2"
+  [[ -n "$backup_id" ]] || return 0
+
+  local meta
+  meta="$(rclone cat "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${backup_id}/metadata.json" --config "$RCLONE_CONFIG" 2>/dev/null || true)"
+  if [[ -z "$meta" ]]; then
+    log "metadata.json not found for ${backup_id}"
+    return 0
   fi
+
+  echo ""
+  echo "Details for: ${backup_id}"
+  echo "-------------------------"
+  echo "$meta" | awk -F: '/instance_id|timestamp|db_count|total_bytes/ {gsub(/[",]/,"",$2); gsub(/[ \t]+/,"",$2); print $1": "$2}'
+  echo "Databases:"
+  echo "$meta" | awk '/"databases"/ {flag=1; next} flag && /\]/ {flag=0} flag {gsub(/[", ]/,"",$0); if($0!="") print "  - "$0}'
+  echo "DB sizes (bytes):"
+  echo "$meta" | awk '/"db_sizes"/ {flag=1; next} flag && /}/ {flag=0} flag {gsub(/[",]/,"",$0); gsub(/^[ \t]+/,"",$0); if($0!="") print "  - "$0}'
 }
 
 require_cmd() {
@@ -157,6 +178,7 @@ backup_now() {
   log "Dumping databases"
   local db
   local dbs=()
+  local db_sizes=()
   while read -r db; do
     [[ -z "$db" ]] && continue
     dbs+=("$db")
@@ -165,6 +187,7 @@ backup_now() {
     zstd -T0 -19 "$dir/$db.dump" -o "$dir/$db.dump.zst"
     rm -f "$dir/$db.dump"
     sha256sum "$dir/$db.dump.zst" > "$dir/$db.dump.zst.sha256"
+    db_sizes+=("$(stat -c %s "$dir/$db.dump.zst" 2>/dev/null || echo 0)")
   done < <(list_pg_databases)
 
   log "Writing metadata"
@@ -174,6 +197,7 @@ backup_now() {
     echo '{'
     echo "  \"instance_id\": \"${PG_INSTANCE_ID}\"," 
     echo "  \"timestamp\": \"${ts}\"," 
+    echo "  \"db_count\": ${#dbs[@]},"
     echo "  \"databases\": ["
     local i
     for i in "${!dbs[@]}"; do
@@ -182,6 +206,13 @@ backup_now() {
       echo "    \"${dbs[$i]}\"${comma}"
     done
     echo "  ],"
+    echo "  \"db_sizes\": {"
+    for i in "${!dbs[@]}"; do
+      local comma=","
+      [[ $i -eq $((${#dbs[@]} - 1)) ]] && comma=""
+      echo "    \"${dbs[$i]}\": ${db_sizes[$i]}${comma}"
+    done
+    echo "  },"
     echo "  \"total_bytes\": ${total_bytes}"
     echo '}'
   } > "$dir/metadata.json"
@@ -465,6 +496,9 @@ main() {
       instance_id="${PG_INSTANCE_ID}"
       [[ -n "$instance_id" ]] || instance_id="$(select_instance)"
       list_backups_pretty "$instance_id"
+      local pick
+      pick="$(gum_input --placeholder "Enter backup_id to view details (empty to skip)")"
+      show_backup_details "$instance_id" "$pick"
       ;;
     restore)
       local instance_id
