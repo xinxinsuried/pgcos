@@ -39,17 +39,26 @@ list_backups_pretty() {
       local hours=$(((diff % 86400) / 3600))
       age="${days}d ${hours}h"
     fi
-    rows+=("$b" "$ts" "$age")
+    local size_bytes
+    size_bytes="$(rclone cat "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${b}/metadata.json" --config "$RCLONE_CONFIG" 2>/dev/null | awk -F: '/total_bytes/ {gsub(/[^0-9]/,"",$2); print $2}')"
+    if [[ -z "$size_bytes" ]]; then
+      size_bytes="$(rclone lsjson "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${b}" --config "$RCLONE_CONFIG" 2>/dev/null | awk -F: '/"Size"/ {sum+=$2} END {print sum+0}')"
+    fi
+    local size_human="${size_bytes}B"
+    if [[ -n "$size_bytes" && "$size_bytes" =~ ^[0-9]+$ ]]; then
+      size_human="$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")"
+    fi
+    rows+=("$b" "$ts" "$age" "$size_human")
   done <<< "$backups"
 
   if command -v gum >/dev/null 2>&1; then
-    gum table --columns "backup_id,datetime,age" --rows "${rows[@]}"
+    gum table --columns "backup_id,datetime,age,size" --rows "${rows[@]}"
   else
-    printf "%-22s %-19s %-10s\n" "backup_id" "datetime" "age"
+    printf "%-22s %-19s %-10s %-10s\n" "backup_id" "datetime" "age" "size"
     local i=0
     while [[ $i -lt ${#rows[@]} ]]; do
-      printf "%-22s %-19s %-10s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}"
-      i=$((i+3))
+      printf "%-22s %-19s %-10s %-10s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}" "${rows[$((i+3))]}"
+      i=$((i+4))
     done
   fi
 }
@@ -147,14 +156,35 @@ backup_now() {
 
   log "Dumping databases"
   local db
+  local dbs=()
   while read -r db; do
     [[ -z "$db" ]] && continue
+    dbs+=("$db")
     log "Dumping $db"
     pg_exec pg_dump -U "$PG_USER" -Fc "$db" > "$dir/$db.dump"
     zstd -T0 -19 "$dir/$db.dump" -o "$dir/$db.dump.zst"
     rm -f "$dir/$db.dump"
     sha256sum "$dir/$db.dump.zst" > "$dir/$db.dump.zst.sha256"
   done < <(list_pg_databases)
+
+  log "Writing metadata"
+  local total_bytes
+  total_bytes="$(du -sb "$dir" | awk '{print $1}')"
+  {
+    echo '{'
+    echo "  \"instance_id\": \"${PG_INSTANCE_ID}\"," 
+    echo "  \"timestamp\": \"${ts}\"," 
+    echo "  \"databases\": ["
+    local i
+    for i in "${!dbs[@]}"; do
+      local comma=","
+      [[ $i -eq $((${#dbs[@]} - 1)) ]] && comma=""
+      echo "    \"${dbs[$i]}\"${comma}"
+    done
+    echo "  ],"
+    echo "  \"total_bytes\": ${total_bytes}"
+    echo '}'
+  } > "$dir/metadata.json"
 
   log "Uploading to COS"
   rclone copy "$dir" "cos:${COS_BUCKET}/${COS_PREFIX}/${PG_INSTANCE_ID}/${ts}" --config "$RCLONE_CONFIG"
@@ -164,7 +194,7 @@ backup_now() {
 
 update_self() {
   local image
-  image="${PGCOS_IMAGE:-${IMAGE_NAME:-pgcos:latest}}"
+  image="${PGCOS_IMAGE:-ghcr.io/xinxinsuried/pgcos:latest}"
   require_cmd docker
   log "Pulling image ${image}"
   docker pull "$image"

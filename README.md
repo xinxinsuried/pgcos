@@ -47,6 +47,7 @@ docker compose run --rm panel
 s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/globals.sql.zst
 s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/{dbname}.dump.zst
 s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
+s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/metadata.json
 ```
 
 ## 恢复流程（自动）
@@ -60,7 +61,7 @@ s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/*.sha256
 
 ## 命令说明（中文）
 - backup-now：立即备份
-- list：列出备份（时间/年龄）
+- list：列出备份（时间/年龄/大小）
 - restore：恢复（latest/select）
 - prune：按保留策略清理旧备份
 - update-self：重新拉取当前镜像
