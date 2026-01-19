@@ -19,11 +19,14 @@ gum_input_password() {
 
 list_backups_pretty() {
   local instance_id="$1"
-  local backups
-  backups="$(list_backups_for_instance "$instance_id" | sort)"
+  local backups="${2:-}"
+  if [[ -z "$backups" ]]; then
+    backups="$(list_backups_for_instance "$instance_id" | sort)"
+  fi
   [[ -z "$backups" ]] && { log "No backups"; return 0; }
 
   local rows=()
+  local idx=1
   while read -r b; do
     [[ -z "$b" ]] && continue
     local ts
@@ -50,16 +53,41 @@ list_backups_pretty() {
     if [[ -n "$size_bytes" && "$size_bytes" =~ ^[0-9]+$ ]]; then
       size_human="$(numfmt --to=iec --suffix=B "$size_bytes" 2>/dev/null || echo "${size_bytes}B")"
     fi
-    rows+=("$b" "$ts" "$age" "$size_human" "${db_count:-?}")
+    rows+=("$idx" "$b" "$ts" "$age" "$size_human" "${db_count:-?}")
+    idx=$((idx + 1))
   done <<< "$backups"
 
-  printf "%-22s %-19s %-10s %-10s %-8s\n" "backup_id" "datetime" "age" "size" "dbs"
-  printf "%-22s %-19s %-10s %-10s %-8s\n" "----------------------" "-------------------" "----------" "----------" "--------"
+  printf "%-4s %-22s %-19s %-10s %-10s %-8s\n" "#" "backup_id" "datetime" "age" "size" "dbs"
+  printf "%-4s %-22s %-19s %-10s %-10s %-8s\n" "--" "----------------------" "-------------------" "----------" "----------" "--------"
   local i=0
   while [[ $i -lt ${#rows[@]} ]]; do
-    printf "%-22s %-19s %-10s %-10s %-8s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}" "${rows[$((i+3))]}" "${rows[$((i+4))]}"
-    i=$((i+5))
+    printf "%-4s %-22s %-19s %-10s %-10s %-8s\n" "${rows[$i]}" "${rows[$((i+1))]}" "${rows[$((i+2))]}" "${rows[$((i+3))]}" "${rows[$((i+4))]}" "${rows[$((i+5))]}"
+    i=$((i+6))
   done
+}
+
+prompt_backup_pick() {
+  local backups="$1"
+  mapfile -t _backup_arr <<< "$backups"
+  local count="${#_backup_arr[@]}"
+  [[ "$count" -eq 0 ]] && return 0
+
+  echo ""
+  echo "Select backup (number or backup_id). Press Enter for latest:"
+  local input
+  read -r input
+  if [[ -z "$input" ]]; then
+    echo "${_backup_arr[$((count - 1))]}"
+    return 0
+  fi
+  if [[ "$input" =~ ^[0-9]+$ ]]; then
+    local idx=$((input - 1))
+    if [[ "$idx" -ge 0 && "$idx" -lt "$count" ]]; then
+      echo "${_backup_arr[$idx]}"
+      return 0
+    fi
+  fi
+  echo "$input"
 }
 
 show_backup_details() {
@@ -495,9 +523,11 @@ main() {
       local instance_id
       instance_id="${PG_INSTANCE_ID}"
       [[ -n "$instance_id" ]] || instance_id="$(select_instance)"
-      list_backups_pretty "$instance_id"
+      local backups
+      backups="$(list_backups_for_instance "$instance_id" | sort)"
+      list_backups_pretty "$instance_id" "$backups"
       local pick
-      pick="$(gum_input --placeholder "Enter backup_id to view details (empty to skip)")"
+      pick="$(prompt_backup_pick "$backups")"
       show_backup_details "$instance_id" "$pick"
       ;;
     restore)
