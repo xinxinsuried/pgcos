@@ -267,7 +267,7 @@ test_restore() {
   require_cmd docker
 
   local test_image
-  test_image="${PG_TEST_IMAGE:-postgres:16-alpine}"
+  test_image="${PG_TEST_IMAGE:-postgres:18.1-alpine}"
   local test_password
   test_password="${PG_TEST_PASSWORD:-pgcos_test_password}"
   local name
@@ -311,7 +311,7 @@ test_flow() {
   backup_now
 
   local test_image
-  test_image="${PG_TEST_IMAGE:-postgres:16-alpine}"
+  test_image="${PG_TEST_IMAGE:-postgres:18.1-alpine}"
   local test_password
   test_password="${PG_TEST_PASSWORD:-pgcos_test_password}"
   local name
