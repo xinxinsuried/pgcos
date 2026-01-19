@@ -328,7 +328,7 @@ restore_from() {
       pg_exec createdb -U "$PG_USER" "$db"
     fi
     log "Restoring $db"
-    zstd -d -c "$dump" | pg_exec pg_restore -U "$PG_USER" --clean --if-exists -d "$db" -
+    zstd -d -c "$dump" | pg_exec pg_restore -U "$PG_USER" --clean --if-exists -d "$db" -F c
   done
 
   rm -rf "$dir"
