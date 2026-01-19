@@ -9,6 +9,14 @@ WORK_DIR="${WORK_DIR:-/tmp/pgcos}"
 log() { printf "[%s] %s\n" "$(date +'%Y-%m-%d %H:%M:%S')" "$*"; }
 fail() { echo "Error: $*" >&2; exit 1; }
 
+gum_input() {
+  gum input --prompt "> " "$@"
+}
+
+gum_input_password() {
+  gum input --password --prompt "> " "$@"
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing command: $1"
 }
@@ -95,7 +103,7 @@ backup_now() {
   mkdir -p "$dir"
 
   log "Dumping globals"
-  pg_exec pg_dumpall --globals-only > "$dir/globals.sql"
+  pg_exec pg_dumpall -U "$PG_USER" --globals-only > "$dir/globals.sql"
   zstd -T0 -19 "$dir/globals.sql" -o "$dir/globals.sql.zst"
   rm -f "$dir/globals.sql"
   sha256sum "$dir/globals.sql.zst" > "$dir/globals.sql.zst.sha256"
@@ -253,7 +261,7 @@ configure() {
   ensure_dirs
   require_cmd gum
   while true; do
-    PG_INSTANCE_ID="$(gum input --placeholder "PG instance id (unique)")"
+    PG_INSTANCE_ID="$(gum_input --placeholder "PG instance id (unique)")"
     [[ -n "$PG_INSTANCE_ID" ]] && break
   done
 
@@ -265,25 +273,25 @@ configure() {
   if [[ -n "$containers" ]]; then
     PG_CONTAINER="$(echo "$containers" | xargs -n1 | gum choose --header "Select PostgreSQL container" --selected "$default_container")"
   else
-    PG_CONTAINER="$(gum input --placeholder "PostgreSQL container name or ID")"
+    PG_CONTAINER="$(gum_input --placeholder "PostgreSQL container name or ID")"
   fi
 
-  PG_USER="$(gum input --placeholder "PostgreSQL superuser (default: postgres)")"
+  PG_USER="$(gum_input --placeholder "PostgreSQL superuser (default: postgres)")"
   [[ -z "$PG_USER" ]] && PG_USER="postgres"
-  PG_PASSWORD="$(gum input --password --placeholder "PostgreSQL password (optional)")"
+  PG_PASSWORD="$(gum_input_password --placeholder "PostgreSQL password (optional)")"
 
-  COS_BUCKET="$(gum input --placeholder "COS bucket (e.g. mybucket-125xxxxxx)")"
-  COS_ENDPOINT="$(gum input --placeholder "COS S3 endpoint (e.g. cos.ap-shanghai.myqcloud.com)")"
-  COS_SECRET_ID="$(gum input --placeholder "SecretId")"
-  COS_SECRET_KEY="$(gum input --password --placeholder "SecretKey")"
+  COS_BUCKET="$(gum_input --placeholder "COS bucket (e.g. mybucket-125xxxxxx)")"
+  COS_ENDPOINT="$(gum_input --placeholder "COS S3 endpoint (e.g. cos.ap-shanghai.myqcloud.com)")"
+  COS_SECRET_ID="$(gum_input --placeholder "SecretId")"
+  COS_SECRET_KEY="$(gum_input_password --placeholder "SecretKey")"
 
   COS_PREFIX="pg-backup"
 
-  SCHEDULE_CRON="$(gum input --placeholder "Backup schedule (cron, default: 0 3 * * *)")"
+  SCHEDULE_CRON="$(gum_input --placeholder "Backup schedule (cron, default: 0 3 * * *)")"
   [[ -z "$SCHEDULE_CRON" ]] && SCHEDULE_CRON="0 3 * * *"
-  RETENTION_DAYS="$(gum input --placeholder "Retention days (default: 14, empty to disable)")"
+  RETENTION_DAYS="$(gum_input --placeholder "Retention days (default: 14, empty to disable)")"
   [[ -z "$RETENTION_DAYS" ]] && RETENTION_DAYS="14"
-  RETENTION_COUNT="$(gum input --placeholder "Retention count (optional)")"
+  RETENTION_COUNT="$(gum_input --placeholder "Retention count (optional)")"
 
   save_config
   log "Configuration saved to ${CONFIG_FILE}"
