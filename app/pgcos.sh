@@ -261,6 +261,115 @@ update_self() {
   log "Update complete. Restart services to apply the new image."
 }
 
+test_restore() {
+  require_config
+  load_config
+  require_cmd docker
+
+  local test_image
+  test_image="${PG_TEST_IMAGE:-postgres:16-alpine}"
+  local test_password
+  test_password="${PG_TEST_PASSWORD:-pgcos_test_password}"
+  local name
+  name="pgcos-restore-test-$(date +%Y%m%d%H%M%S)"
+
+  log "Starting test Postgres container: ${name}"
+  docker run -d --name "$name" -e POSTGRES_PASSWORD="$test_password" "$test_image" >/dev/null
+
+  log "Waiting for Postgres ready"
+  local i
+  for i in {1..30}; do
+    if docker exec -e PGPASSWORD="$test_password" "$name" pg_isready -U postgres >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  local backup_id
+  local instance_id
+  instance_id="${PG_INSTANCE_ID}"
+  [[ -n "$instance_id" ]] || instance_id="$(select_instance)"
+  backup_id="$(latest_backup "$instance_id")"
+  [[ -n "$backup_id" ]] || fail "No backup found for instance ${instance_id}"
+
+  log "Restoring backup ${backup_id} into ${name}"
+  local original_container
+  original_container="$PG_CONTAINER"
+  PG_CONTAINER="$name"
+  PG_USER="postgres"
+  PG_PASSWORD="$test_password"
+  restore_from "$instance_id" "$backup_id"
+  PG_CONTAINER="$original_container"
+
+  log "Test restore complete. Container still running: ${name}"
+  log "Cleanup when done: docker rm -f ${name}"
+}
+
+test_flow() {
+  require_config
+  load_config
+  require_cmd docker
+
+  log "Running backup-now"
+  backup_now
+
+  local test_image
+  test_image="${PG_TEST_IMAGE:-postgres:16-alpine}"
+  local test_password
+  test_password="${PG_TEST_PASSWORD:-pgcos_test_password}"
+  local name
+  name="pgcos-test-flow-$(date +%Y%m%d%H%M%S)"
+
+  log "Starting test Postgres container: ${name}"
+  docker run -d --name "$name" -e POSTGRES_PASSWORD="$test_password" "$test_image" >/dev/null
+
+  local cleanup
+  cleanup() {
+    docker rm -f "$name" >/dev/null 2>&1 || true
+  }
+  trap cleanup EXIT
+
+  log "Waiting for Postgres ready"
+  local i
+  for i in {1..30}; do
+    if docker exec -e PGPASSWORD="$test_password" "$name" pg_isready -U postgres >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  local instance_id
+  local backup_id
+  instance_id="${PG_INSTANCE_ID}"
+  [[ -n "$instance_id" ]] || instance_id="$(select_instance)"
+  backup_id="$(latest_backup "$instance_id")"
+  [[ -n "$backup_id" ]] || fail "No backup found for instance ${instance_id}"
+
+  log "Restoring backup ${backup_id} into ${name}"
+  local original_container
+  original_container="$PG_CONTAINER"
+  PG_CONTAINER="$name"
+  PG_USER="postgres"
+  PG_PASSWORD="$test_password"
+  restore_from "$instance_id" "$backup_id"
+  PG_CONTAINER="$original_container"
+
+  log "Verifying restore"
+  local meta_db_count
+  meta_db_count="$(rclone cat "cos:${COS_BUCKET}/${COS_PREFIX}/${instance_id}/${backup_id}/metadata.json" --config "$RCLONE_CONFIG" 2>/dev/null | awk -F: '/db_count/ {gsub(/[^0-9]/,"",$2); print $2}')"
+  local restored_count
+  restored_count="$(docker exec -e PGPASSWORD="$test_password" "$name" psql -U postgres -t -A -c "select count(*) from pg_database where datistemplate=false" postgres | tr -d '\r' | tr -d ' ')"
+  if [[ -n "$meta_db_count" && -n "$restored_count" && "$restored_count" -ge "$meta_db_count" ]]; then
+    log "Test flow OK: restored_count=${restored_count}, expected>=${meta_db_count}"
+  else
+    fail "Test flow failed: restored_count=${restored_count}, expected>=${meta_db_count}"
+  fi
+
+  log "Cleaning up test container"
+  cleanup
+  trap - EXIT
+}
+
 list_instances() {
   require_config
   load_config
@@ -445,6 +554,8 @@ panel_menu() {
       "show-config" \
       "test-connection" \
       "update-self" \
+      "test-restore" \
+      "test-flow" \
       "help" \
       "exit")"
 
@@ -473,6 +584,8 @@ panel_menu() {
       show-config) show_config ;;
       test-connection) test_connection ;;
       update-self) update_self ;;
+      test-restore) test_restore ;;
+      test-flow) test_flow ;;
       help) echo "
 configure    初始化/修改配置
 backup-now   立即备份
@@ -482,6 +595,8 @@ prune        按保留策略清理旧备份
 show-config  查看当前配置
 test-connection  测试 PG/COS 连接
 update-self  拉取最新镜像
+    test-restore 一键测试恢复（新建临时 PG）
+    test-flow    一键测试全流程（备份->恢复->验证->清理）
 " ;;
       exit) break ;;
     esac
@@ -547,9 +662,11 @@ main() {
     show-config) show_config ;;
     test-connection) test_connection ;;
     update-self) update_self ;;
+    test-restore) test_restore ;;
+    test-flow) test_flow ;;
     scheduler) scheduler ;;
     *)
-      echo "Usage: $0 {panel|configure|backup-now|list|restore [latest|id]|prune|show-config|test-connection|update-self|scheduler}"
+      echo "Usage: $0 {panel|configure|backup-now|list|restore [latest|id]|prune|show-config|test-connection|update-self|test-restore|test-flow|scheduler}"
       exit 1
       ;;
   esac

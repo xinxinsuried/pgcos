@@ -41,6 +41,8 @@ docker compose run --rm panel
 - show-config
 - test-connection
 - update-self（重新拉取镜像）
+- test-restore（一键创建临时 PG 并恢复 latest）
+- test-flow（一键测试全流程：备份→恢复→验证→清理）
 
 ## 备份目录结构
 ```
@@ -71,6 +73,8 @@ s3://{bucket}/pg-backup/{instance_id}/{YYYY-MM-DD_HH-MM-SS}/metadata.json
 - restore：恢复（latest/select）
 - prune：按保留策略清理旧备份
 - update-self：重新拉取当前镜像
+- test-restore：创建临时 PG 容器并恢复 latest（默认镜像 `postgres:16-alpine`）
+- test-flow：执行一次备份并自动恢复到临时 PG，验证后删除容器
 
 ## 常见错误
 - **pg_dump/psql 不存在**：该工具只通过 `docker exec` 调用 PG 容器里的工具，请确保容器内已有 `pg_dump/psql`。
