@@ -17,6 +17,19 @@ gum_input_password() {
   gum input --password --prompt "> " "$@"
 }
 
+prompt_flow_pg_image() {
+  local default_image="$1"
+  local input=""
+  if command -v gum >/dev/null 2>&1; then
+    input="$(gum_input --value "${default_image}" --placeholder "Flow 使用的 PG 镜像（例如 postgres:17-alpine）")"
+  else
+    echo "Flow 使用的 PG 镜像 [${default_image}]:"
+    read -r input
+  fi
+  [[ -z "$input" ]] && input="$default_image"
+  echo "$input"
+}
+
 list_backups_pretty() {
   local instance_id="$1"
   local backups="${2:-}"
@@ -312,6 +325,7 @@ test_flow() {
 
   local test_image
   test_image="${PG_TEST_IMAGE:-postgres:18.1-alpine}"
+  test_image="$(prompt_flow_pg_image "$test_image")"
   local test_password
   test_password="${PG_TEST_PASSWORD:-pgcos_test_password}"
   local name
